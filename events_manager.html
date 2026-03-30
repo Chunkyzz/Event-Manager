@@ -832,23 +832,50 @@
 
         <!-- סיכום -->
         <div class="summary-box">
-          <div style="font-size:13px; font-weight:700; color:var(--text2); margin-bottom:16px; text-transform:uppercase; letter-spacing:0.05em">📊 סיכום אירוע</div>
+          <div style="font-size:13px; font-weight:700; color:var(--text2); margin-bottom:16px; text-transform:uppercase; letter-spacing:0.05em">&#x1F4CA; סיכום אירוע</div>
           <div class="summary-grid">
             <div class="summary-item">
               <div class="summary-item-label">הכנסה</div>
-              <div class="summary-item-value neutral" id="sum-income">₪0</div>
+              <div class="summary-item-value neutral" id="sum-income">&#8362;0</div>
             </div>
             <div class="summary-item">
               <div class="summary-item-label">הוצאות</div>
-              <div class="summary-item-value muted" id="sum-expenses">₪0</div>
+              <div class="summary-item-value muted" id="sum-expenses">&#8362;0</div>
             </div>
             <div class="summary-item">
-              <div class="summary-item-label">רווח נטו</div>
-              <div class="summary-item-value" id="sum-profit">₪0</div>
+              <div class="summary-item-label">רווח גולמי</div>
+              <div class="summary-item-value" id="sum-profit">&#8362;0</div>
             </div>
             <div class="summary-item">
-              <div class="summary-item-label">% רווח</div>
+              <div class="summary-item-label">% רווח גולמי</div>
               <div class="summary-item-value" id="sum-margin">0%</div>
+            </div>
+          </div>
+
+          <!-- TAX SECTION -->
+          <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <div style="font-size:11px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:12px; display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleTaxSection()">
+              &#x1F4B3; מיסים ומקדמות
+              <span id="tax-toggle-icon" style="font-size:10px;">&#x25BC;</span>
+            </div>
+            <div id="tax-section" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+              <div class="summary-item">
+                <div class="summary-item-label">מע"מ (18%)</div>
+                <div class="summary-item-value muted" id="sum-vat" style="font-size:16px;">&#8362;0</div>
+                <div style="font-size:11px; color:var(--text3);" id="sum-vat-base">על &#8362;0 חשבונית</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-item-label">הכנסה ללא מע"מ</div>
+                <div class="summary-item-value muted" id="sum-net-invoice" style="font-size:16px;">&#8362;0</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-item-label">מקדמות (5%)</div>
+                <div class="summary-item-value muted" id="sum-advance" style="font-size:16px;">&#8362;0</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-item-label">רווח אחרי מיסים</div>
+                <div class="summary-item-value" id="sum-after-tax" style="font-size:16px;">&#8362;0</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1096,6 +1123,36 @@ function calcSummary() {
   const marginEl = document.getElementById('sum-margin');
   marginEl.textContent = `${margin.toFixed(1)}%`;
   marginEl.className = 'summary-item-value ' + (margin >= 30 ? 'positive' : margin >= 0 ? 'neutral' : 'negative');
+
+  // TAX CALCULATIONS
+  const invoiceAmount = parseFloat(document.getElementById('f-invoice').value) || 0;
+  const netInvoice = invoiceAmount / 1.18; // הכנסה ללא מע"מ
+  const vat = invoiceAmount - netInvoice; // מע"מ לתשלום
+  const advance = netInvoice * 0.05; // מקדמות 5% על נטו
+  const profitAfterTax = profit - vat - advance;
+
+  const vatEl = document.getElementById('sum-vat');
+  if (vatEl) {
+    vatEl.textContent = `₪${vat.toFixed(0)}`;
+    document.getElementById('sum-vat-base').textContent = `על ₪${invoiceAmount.toLocaleString()} חשבונית`;
+    document.getElementById('sum-net-invoice').textContent = `₪${netInvoice.toFixed(0)}`;
+    document.getElementById('sum-advance').textContent = `₪${advance.toFixed(0)}`;
+    const afterTaxEl = document.getElementById('sum-after-tax');
+    afterTaxEl.textContent = `₪${profitAfterTax.toFixed(0)}`;
+    afterTaxEl.className = 'summary-item-value ' + (profitAfterTax >= 0 ? 'positive' : 'negative');
+  }
+}
+
+function toggleTaxSection() {
+  const section = document.getElementById('tax-section');
+  const icon = document.getElementById('tax-toggle-icon');
+  if (section.style.display === 'none') {
+    section.style.display = 'grid';
+    icon.textContent = '▼';
+  } else {
+    section.style.display = 'none';
+    icon.textContent = '▶';
+  }
 }
 
 function addWorker() {
@@ -1385,7 +1442,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<div class="version-badge">v0.2.0</div>
+<div class="version-badge">v0.3.0</div>
 
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
