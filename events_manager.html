@@ -586,6 +586,7 @@
     <button class="tab active" onclick="switchTab('dashboard')">דשבורד</button>
     <button class="tab" onclick="switchTab('events')">אירועים</button>
     <button class="tab" onclick="switchTab('add')">+ אירוע חדש</button>
+    <button class="tab" onclick="switchTab('settings')">⚙️ הגדרות</button>
   </div>
 </header>
 
@@ -749,11 +750,21 @@
         </div>
         <div class="form-group span2">
           <label>כתובת / מיקום</label>
-          <input type="text" id="f-location" placeholder="עיר, רחוב...">
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="f-location" placeholder="עיר, רחוב..." style="flex:1" oninput="clearDistanceCache()">
+            <button class="btn btn-ghost" onclick="calcDistance()" id="btn-calc-dist" style="padding:8px 14px; font-size:13px; white-space:nowrap;">📍 חשב מרחק</button>
+          </div>
         </div>
         <div class="form-group">
           <label>ק"מ נסיעה (הלוך)</label>
-          <input type="number" id="f-km" placeholder="0" oninput="calcSummary()">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="number" id="f-km" placeholder="0" oninput="calcSummary()" style="flex:1">
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; font-size:13px; color:var(--text2); cursor:pointer; white-space:nowrap;">
+              <input type="checkbox" id="f-highway6" onchange="calcSummary()" style="width:16px; height:16px;">
+              כביש 6
+            </label>
+          </div>
+          <div id="dist-result" style="font-size:12px; color:var(--text2); margin-top:4px;"></div>
         </div>
 
         <div class="divider"></div>
@@ -808,8 +819,9 @@
           <input type="number" id="f-food" placeholder="0" oninput="calcSummary()">
         </div>
         <div class="form-group">
-          <label>הוצאות נסיעה (₪)</label>
-          <input type="number" id="f-travel" placeholder="מחושב אוטו' לפי ק"מ" oninput="calcSummary()">
+          <label>עלות נסיעה (₪)</label>
+          <input type="number" id="f-travel" placeholder="מחושב אוטומטית" oninput="calcSummary()" readonly style="background:var(--surface2); cursor:default;">
+          <div style="font-size:11px; color:var(--text3); margin-top:4px;" id="travel-breakdown"></div>
         </div>
         <div class="form-group">
           <label>הוצאות אחרות (₪)</label>
@@ -856,40 +868,209 @@
     </div>
   </div>
 
+  <!-- SETTINGS -->
+  <div class="page" id="page-settings">
+    <div class="section-header">
+      <div class="section-title">⚙️ הגדרות מערכת</div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:800px;">
+
+      <!-- Google API -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; grid-column:span 2;">
+        <div style="font-size:14px; font-weight:700; color:var(--accent); margin-bottom:16px;">🗺️ Google Maps API</div>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="s-api-key" placeholder="הכנס את ה-API Key שלך">
+        </div>
+        <div style="font-size:12px; color:var(--text3); margin-top:8px;">המפתח נשמר בדפדפן שלך בלבד ולא מועלה לשרת</div>
+      </div>
+
+      <!-- דלק -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px;">
+        <div style="font-size:14px; font-weight:700; color:var(--accent2); margin-bottom:16px;">⛽ הגדרות דלק</div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>מחיר ליטר דלק (₪)</label>
+          <input type="number" id="s-fuel-price" placeholder="6.90" step="0.01">
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>צריכת רכב (ק"מ לליטר)</label>
+          <input type="number" id="s-fuel-efficiency" placeholder="12" step="0.5">
+        </div>
+        <div style="background:var(--bg); border-radius:8px; padding:12px; font-size:13px; color:var(--text2);">
+          עלות לק"מ: <strong id="cost-per-km-display" style="color:var(--text)">₪0.58</strong>
+        </div>
+      </div>
+
+      <!-- כביש 6 -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px;">
+        <div style="font-size:14px; font-weight:700; color:var(--blue); margin-bottom:16px;">🛣️ כביש 6 (פסקל)</div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>עלות ממוצעת למעבר (₪)</label>
+          <input type="number" id="s-highway6-cost" placeholder="25" step="1">
+        </div>
+        <div class="form-group">
+          <label>הערות</label>
+          <input type="text" id="s-highway6-note" placeholder="לדוגמה: מרכז-צפון 30₪">
+        </div>
+      </div>
+
+      <!-- כפתור שמירה -->
+      <div style="grid-column:span 2; display:flex; justify-content:flex-end; gap:12px;">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 שמור הגדרות</button>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
 <script>
 let events = JSON.parse(localStorage.getItem('pizzaEvents') || '[]');
+const BLACK_MULTIPLIER = 1.3;
 
-const FUEL_COST_PER_KM = 0.7; // ₪ per km (round trip × 2)
-const BLACK_MULTIPLIER = 1.3; // cost multiplier for cash workers
+// SETTINGS
+function getSettings() {
+  return JSON.parse(localStorage.getItem('appSettings') || '{}');
+}
+
+function getFuelCostPerKm() {
+  const s = getSettings();
+  const price = parseFloat(s.fuelPrice) || 6.90;
+  const efficiency = parseFloat(s.fuelEfficiency) || 12;
+  return price / efficiency;
+}
+
+function getHighway6Cost() {
+  const s = getSettings();
+  return parseFloat(s.highway6Cost) || 25;
+}
+
+function saveSettings() {
+  const settings = {
+    apiKey: document.getElementById('s-api-key').value,
+    fuelPrice: document.getElementById('s-fuel-price').value,
+    fuelEfficiency: document.getElementById('s-fuel-efficiency').value,
+    highway6Cost: document.getElementById('s-highway6-cost').value,
+    highway6Note: document.getElementById('s-highway6-note').value,
+  };
+  localStorage.setItem('appSettings', JSON.stringify(settings));
+  updateCostDisplay();
+  alert('✅ הגדרות נשמרו!');
+}
+
+function loadSettings() {
+  const s = getSettings();
+  if (document.getElementById('s-api-key')) {
+    document.getElementById('s-api-key').value = s.apiKey || '';
+    document.getElementById('s-fuel-price').value = s.fuelPrice || '6.90';
+    document.getElementById('s-fuel-efficiency').value = s.fuelEfficiency || '12';
+    document.getElementById('s-highway6-cost').value = s.highway6Cost || '25';
+    document.getElementById('s-highway6-note').value = s.highway6Note || '';
+    updateCostDisplay();
+  }
+}
+
+function updateCostDisplay() {
+  const el = document.getElementById('cost-per-km-display');
+  if (el) el.textContent = '₪' + getFuelCostPerKm().toFixed(2);
+}
+
+// DISTANCE CALC
+let distanceCache = {};
+
+function clearDistanceCache() {
+  distanceCache = {};
+  document.getElementById('dist-result').textContent = '';
+  document.getElementById('f-km').value = '';
+  calcSummary();
+}
+
+async function calcDistance() {
+  const s = getSettings();
+  if (!s.apiKey) {
+    alert('נא להכניס Google API Key בהגדרות');
+    switchTab('settings');
+    return;
+  }
+  const location = document.getElementById('f-location').value.trim();
+  if (!location) { alert('נא להזין כתובת / מיקום'); return; }
+
+  const btn = document.getElementById('btn-calc-dist');
+  btn.textContent = '⏳ מחשב...';
+  btn.disabled = true;
+
+  const origin = 'כפר סבא, ישראל';
+  const destination = location + ', ישראל';
+
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&language=he&key=${s.apiKey}`;
+
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
+    const data = await res.json();
+    const parsed = JSON.parse(data.contents);
+
+    if (parsed.rows && parsed.rows[0].elements[0].status === 'OK') {
+      const distMeters = parsed.rows[0].elements[0].distance.value;
+      const km = Math.round(distMeters / 1000);
+      document.getElementById('f-km').value = km;
+      document.getElementById('dist-result').textContent = `📍 ${parsed.rows[0].elements[0].distance.text} (${parsed.rows[0].elements[0].duration.text})`;
+      calcSummary();
+    } else {
+      document.getElementById('dist-result').textContent = '❌ לא נמצאה כתובת, הזן ק"מ ידנית';
+    }
+  } catch(e) {
+    document.getElementById('dist-result').textContent = '❌ שגיאה, הזן ק"מ ידנית';
+  }
+
+  btn.textContent = '📍 חשב מרחק';
+  btn.disabled = false;
+}
 
 function switchTab(tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
-  const tabs = ['dashboard','events','add'];
+  const tabs = ['dashboard','events','add','settings'];
   const idx = tabs.indexOf(tab);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (tab === 'dashboard') renderDashboard();
   if (tab === 'events') renderEvents();
+  if (tab === 'settings') loadSettings();
 }
 
 function calcSummary() {
   const income = parseFloat(document.getElementById('f-income').value) || 0;
   const food = parseFloat(document.getElementById('f-food').value) || 0;
-  const travel = parseFloat(document.getElementById('f-travel').value) || 0;
   const other = parseFloat(document.getElementById('f-other').value) || 0;
   const km = parseFloat(document.getElementById('f-km').value) || 0;
+  const highway6 = document.getElementById('f-highway6') && document.getElementById('f-highway6').checked;
 
-  // Auto-fill travel if km provided and travel is empty
-  if (km > 0 && !document.getElementById('f-travel').value) {
-    document.getElementById('f-travel').placeholder = `₪${(km * 2 * FUEL_COST_PER_KM).toFixed(0)} (מחושב)`;
+  // Calculate travel cost dynamically
+  const fuelCostPerKm = getFuelCostPerKm();
+  const fuelCost = km * 2 * fuelCostPerKm; // round trip
+  const highway6Cost = highway6 ? getHighway6Cost() * 2 : 0; // round trip
+  const travelCost = fuelCost + highway6Cost;
+
+  // Update travel field and breakdown
+  const travelEl = document.getElementById('f-travel');
+  if (travelEl && km > 0) {
+    travelEl.value = travelCost.toFixed(0);
+    const breakdown = document.getElementById('travel-breakdown');
+    if (breakdown) {
+      let parts = [`דלק: ₪${fuelCost.toFixed(0)} (${km*2}ק"מ × ₪${fuelCostPerKm.toFixed(2)})`];
+      if (highway6) parts.push(`כביש 6: ₪${highway6Cost.toFixed(0)}`);
+      breakdown.textContent = parts.join(' | ');
+    }
+  } else if (travelEl && km === 0) {
+    travelEl.value = '';
+    const breakdown = document.getElementById('travel-breakdown');
+    if (breakdown) breakdown.textContent = '';
   }
 
   // Workers
   let workerTotal = 0;
-  document.querySelectorAll('#workers-list .worker-row').forEach((row, i) => {
+  document.querySelectorAll('#workers-list .worker-row').forEach((row) => {
     const type = row.querySelectorAll('select')[0].value;
     const salary = parseFloat(row.querySelectorAll('input')[1].value) || 0;
     const realCost = type === 'שחור' ? salary * BLACK_MULTIPLIER : salary;
@@ -898,7 +1079,6 @@ function calcSummary() {
     if (display) display.textContent = `עלות: ₪${realCost.toFixed(0)}`;
   });
 
-  const travelCost = travel || (km * 2 * FUEL_COST_PER_KM);
   const totalExpenses = workerTotal + food + travelCost + other;
   const profit = income - totalExpenses;
   const margin = income > 0 ? (profit / income * 100) : 0;
@@ -955,7 +1135,11 @@ function saveEvent() {
   const travel = parseFloat(document.getElementById('f-travel').value) || 0;
   const other = parseFloat(document.getElementById('f-other').value) || 0;
   const km = parseFloat(document.getElementById('f-km').value) || 0;
-  const travelCost = travel || (km * 2 * FUEL_COST_PER_KM);
+  const highway6 = document.getElementById('f-highway6').checked;
+  const fuelCostPerKm = getFuelCostPerKm();
+  const fuelCost = km * 2 * fuelCostPerKm;
+  const highway6Cost = highway6 ? getHighway6Cost() * 2 : 0;
+  const travelCost = fuelCost + highway6Cost;
 
   const workers = getWorkers();
   let workerCost = 0;
@@ -976,6 +1160,7 @@ function saveEvent() {
     guests: parseInt(document.getElementById('f-guests').value) || 0,
     location: document.getElementById('f-location').value,
     km,
+    highway6,
     income,
     cash: parseFloat(document.getElementById('f-cash').value) || 0,
     invoice: parseFloat(document.getElementById('f-invoice').value) || 0,
@@ -1123,6 +1308,7 @@ function getMonthName(dateStr) {
 
 // Init
 renderDashboard();
+loadSettings();
 
 // EDIT FUNCTIONS
 let editingId = null;
@@ -1194,7 +1380,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<div class="version-badge">v0.1.0</div>
+<div class="version-badge">v0.2.0</div>
 
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
