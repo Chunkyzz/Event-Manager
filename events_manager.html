@@ -257,6 +257,21 @@
 
   .period-events-table { margin-top: 20px; }
 
+  /* STATUS BADGES */
+  .badge-reserved { background: rgba(244,160,28,0.15); color: var(--accent2); }
+  .badge-confirmed { background: rgba(52,152,219,0.15); color: var(--blue); }
+  .badge-ready { background: rgba(155,89,182,0.15); color: #9b59b6; }
+  .badge-done { background: rgba(46,204,113,0.15); color: var(--green); }
+
+  .gcal-btn {
+    background: #1a73e8; color: white; border: none;
+    padding: 6px 12px; border-radius: 6px; font-size: 12px;
+    font-family: 'Heebo', sans-serif; cursor: pointer; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: background 0.2s;
+  }
+  .gcal-btn:hover { background: #1557b0; }
+
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -359,11 +374,11 @@
         <thead>
           <tr>
             <th>לקוח</th><th>טלפון</th><th>תאריך אירוע</th><th>מיקום</th>
-            <th>אנשים</th><th>הכנסה</th><th>הוצאות</th><th>רווח</th><th>% רווח</th><th>תשלום</th><th></th>
+            <th>אנשים</th><th>הכנסה</th><th>הוצאות</th><th>רווח</th><th>% רווח</th><th>תשלום</th><th>סטטוס</th><th></th>
           </tr>
         </thead>
         <tbody id="events-tbody">
-          <tr><td colspan="11"><div class="empty"><div class="empty-icon">🎉</div><div class="empty-text">אין אירועים עדיין</div></div></td></tr>
+          <tr><td colspan="12"><div class="empty"><div class="empty-icon">🎉</div><div class="empty-text">אין אירועים עדיין</div></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -392,6 +407,24 @@
             <option value="חשבונית">חשבונית</option>
             <option value="מעורב">מעורב</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label>סטטוס אירוע</label>
+          <select id="f-status">
+            <option value="שריון">📅 שריון</option>
+            <option value="מאושר">✅ מאושר</option>
+            <option value="הוכן">🍕 הוכן</option>
+            <option value="בוצע">✔️ בוצע</option>
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>יומן Google</label>
+          <div style="display:flex; align-items:center; gap:16px; padding:10px 0;">
+            <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:14px; color:var(--text); cursor:pointer; font-weight:500;">
+              <input type="checkbox" id="f-send-calendar" style="width:16px; height:16px;" checked>
+              שלח ליומן Google אוטומטית בשמירה
+            </label>
+          </div>
         </div>
 
         <div class="divider"></div>
@@ -620,7 +653,7 @@
 
 </main>
 
-<div class="version-badge">v0.4.0</div>
+<div class="version-badge">v0.5.0</div>
 
 <!-- EDIT MODAL -->
 <div class="modal-overlay" id="edit-modal">
@@ -639,6 +672,15 @@
           <option value="מזומן">מזומן</option>
           <option value="חשבונית">חשבונית</option>
           <option value="מעורב">מעורב</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>סטטוס</label>
+        <select id="e-status">
+          <option value="שריון">📅 שריון</option>
+          <option value="מאושר">✅ מאושר</option>
+          <option value="הוכן">🍕 הוכן</option>
+          <option value="בוצע">✔️ בוצע</option>
         </select>
       </div>
       <div class="divider"></div>
@@ -955,11 +997,13 @@ function saveEvent() {
   const profit = income - totalExpenses;
   const invoiceAmount = parseFloat(document.getElementById('f-invoice').value) || 0;
   const { netInvoice, vat, advance, afterTax } = calcTax(invoiceAmount, profit);
+  const sendCalendar = document.getElementById('f-send-calendar').checked;
 
   const event = {
     id: Date.now(),
     name, phone: document.getElementById('f-phone').value,
     payment: document.getElementById('f-payment').value,
+    status: document.getElementById('f-status').value,
     eventDate: document.getElementById('f-event-date').value,
     closeDate: document.getElementById('f-close-date').value,
     guests: parseInt(document.getElementById('f-guests').value) || 0,
@@ -974,6 +1018,11 @@ function saveEvent() {
   };
   events.unshift(event);
   localStorage.setItem('pizzaEvents', JSON.stringify(events));
+
+  if (sendCalendar) {
+    openInCalendar(event.id);
+  }
+
   clearForm();
   switchTab('events');
 }
@@ -983,6 +1032,8 @@ function clearForm() {
    'f-km','f-income','f-cash','f-invoice','f-food','f-travel','f-other','f-notes']
   .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('f-payment').value = 'מזומן';
+  document.getElementById('f-status').value = 'שריון';
+  document.getElementById('f-send-calendar').checked = true;
   document.getElementById('f-highway6').checked = false;
   document.getElementById('workers-list').innerHTML = `
     <div class="worker-row">
@@ -996,6 +1047,52 @@ function clearForm() {
       <button class="btn-remove" onclick="removeWorker(this)">×</button>
     </div>`;
   calcSummary();
+}
+
+function getStatusBadge(status) {
+  const map = {
+    'שריון':  { cls: 'badge-reserved',  label: '📅 שריון' },
+    'מאושר':  { cls: 'badge-confirmed', label: '✅ מאושר' },
+    'הוכן':   { cls: 'badge-ready',     label: '🍕 הוכן' },
+    'בוצע':   { cls: 'badge-done',      label: '✔️ בוצע' },
+  };
+  const s = map[status] || { cls: 'badge-reserved', label: status || '—' };
+  return `<span class="badge ${s.cls}">${s.label}</span>`;
+}
+
+function openInCalendar(id) {
+  const e = events.find(ev => ev.id === id);
+  if (!e) return;
+
+  // Build date strings for Google Calendar URL (YYYYMMDD format)
+  let startDate = '', endDate = '';
+  if (e.eventDate) {
+    const d = new Date(e.eventDate);
+    const pad = n => String(n).padStart(2,'0');
+    const dateStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+    startDate = dateStr + 'T090000'; // default 9:00 AM
+    // End = same day 23:00
+    endDate = dateStr + 'T230000';
+  }
+
+  const workerNames = (e.workers || []).map(w => w.name).filter(Boolean).join(', ');
+  const details = [
+    `📞 טלפון: ${e.phone || '—'}`,
+    `👥 אנשים: ${e.guests || '—'}`,
+    `💰 סכום: ₪${(e.income||0).toLocaleString()} (${e.payment})`,
+    `📊 סטטוס: ${e.status || 'שריון'}`,
+    workerNames ? `👷 עובדים: ${workerNames}` : '',
+    e.notes ? `📝 הערות: ${e.notes}` : '',
+  ].filter(Boolean).join('\n');
+
+  const title = encodeURIComponent(`🍕 פיצה זמני — ${e.name}`);
+  const location = encodeURIComponent(e.location || '');
+  const detailsEnc = encodeURIComponent(details);
+
+  let url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${detailsEnc}&location=${location}`;
+  if (startDate) url += `&dates=${startDate}/${endDate}`;
+
+  window.open(url, '_blank');
 }
 
 function deleteEvent(id) {
@@ -1017,13 +1114,14 @@ function renderEvents() {
   });
   const tbody = document.getElementById('events-tbody');
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="11"><div class="empty"><div class="empty-icon">🎉</div><div class="empty-text">אין אירועים</div></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12"><div class="empty"><div class="empty-icon">🎉</div><div class="empty-text">אין אירועים</div></div></td></tr>`;
     return;
   }
   tbody.innerHTML = filtered.map(e => {
     const margin = e.income > 0 ? (e.profit / e.income * 100).toFixed(1) : 0;
     const profitClass = e.profit >= 0 ? 'profit-positive' : 'profit-negative';
     const badgeClass = e.payment === 'מזומן' ? 'badge-cash' : e.payment === 'חשבונית' ? 'badge-invoice' : 'badge-mixed';
+    const statusBadge = getStatusBadge(e.status);
     return `<tr>
       <td><strong>${e.name}</strong></td>
       <td style="color:var(--text2)">${e.phone || '—'}</td>
@@ -1035,7 +1133,9 @@ function renderEvents() {
       <td class="${profitClass}">₪${e.profit.toFixed(0).toLocaleString()}</td>
       <td class="${profitClass}">${margin}%</td>
       <td><span class="badge ${badgeClass}">${e.payment}</span></td>
-      <td style="display:flex; gap:6px;">
+      <td>${statusBadge}</td>
+      <td style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <button class="gcal-btn" onclick="openInCalendar(${e.id})" title="פתח ביומן Google">📅</button>
         <button class="btn-ghost" onclick="openEditModal(${e.id})" style="padding:4px 10px; font-size:12px; border-radius:6px;">✏️</button>
         <button class="btn-remove" onclick="deleteEvent(${e.id})">×</button>
       </td>
@@ -1246,6 +1346,7 @@ function openEditModal(id) {
   document.getElementById('e-name').value = e.name || '';
   document.getElementById('e-phone').value = e.phone || '';
   document.getElementById('e-payment').value = e.payment || 'מזומן';
+  document.getElementById('e-status').value = e.status || 'שריון';
   document.getElementById('e-event-date').value = e.eventDate || '';
   document.getElementById('e-close-date').value = e.closeDate || '';
   document.getElementById('e-guests').value = e.guests || '';
@@ -1285,6 +1386,7 @@ function saveEdit() {
     name: document.getElementById('e-name').value.trim(),
     phone: document.getElementById('e-phone').value,
     payment: document.getElementById('e-payment').value,
+    status: document.getElementById('e-status').value,
     eventDate: document.getElementById('e-event-date').value,
     closeDate: document.getElementById('e-close-date').value,
     guests: parseInt(document.getElementById('e-guests').value) || 0,
