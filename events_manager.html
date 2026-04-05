@@ -653,7 +653,7 @@
 
 </main>
 
-<div class="version-badge">v0.5.0</div>
+<div class="version-badge">v0.5.1</div>
 
 <!-- EDIT MODAL -->
 <div class="modal-overlay" id="edit-modal">
@@ -822,26 +822,51 @@ async function calcDistance() {
   const location = document.getElementById('f-location').value.trim();
   if (!location) { alert('נא להזין כתובת / מיקום'); return; }
   const btn = document.getElementById('btn-calc-dist');
+  const resultEl = document.getElementById('dist-result');
   btn.textContent = '⏳ מחשב...'; btn.disabled = true;
+  resultEl.textContent = '';
+
   const origin = 'כפר יונה, ישראל';
   const destination = location + ', ישראל';
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&language=he&key=${s.apiKey}`;
-  try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl);
-    const data = await res.json();
-    const parsed = JSON.parse(data.contents);
-    if (parsed.rows?.[0]?.elements?.[0]?.status === 'OK') {
-      const km = Math.round(parsed.rows[0].elements[0].distance.value / 1000);
-      document.getElementById('f-km').value = km;
-      document.getElementById('dist-result').textContent = `📍 ${parsed.rows[0].elements[0].distance.text} (${parsed.rows[0].elements[0].duration.text})`;
-      calcSummary();
-    } else {
-      document.getElementById('dist-result').textContent = '❌ לא נמצאה כתובת, הזן ק"מ ידנית';
+  const apiUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&language=he&key=${s.apiKey}`;
+
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
+  ];
+
+  let success = false;
+  for (const proxyUrl of proxies) {
+    try {
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      const raw = await res.json();
+      // allorigins wraps in .contents, corsproxy returns directly
+      const parsed = raw.contents ? JSON.parse(raw.contents) : raw;
+      if (parsed.rows?.[0]?.elements?.[0]?.status === 'OK') {
+        const el = parsed.rows[0].elements[0];
+        const km = Math.round(el.distance.value / 1000);
+        document.getElementById('f-km').value = km;
+        resultEl.textContent = `📍 ${el.distance.text} (${el.duration.text})`;
+        resultEl.style.color = 'var(--green)';
+        calcSummary();
+        success = true;
+        break;
+      } else if (parsed.rows?.[0]?.elements?.[0]?.status) {
+        resultEl.textContent = '❌ לא נמצאה כתובת — הזן ק"מ ידנית';
+        resultEl.style.color = 'var(--red)';
+        success = true;
+        break;
+      }
+    } catch(err) {
+      // try next proxy
     }
-  } catch(e) {
-    document.getElementById('dist-result').textContent = '❌ שגיאה, הזן ק"מ ידנית';
   }
+
+  if (!success) {
+    resultEl.textContent = '❌ שגיאת חיבור — הזן ק"מ ידנית';
+    resultEl.style.color = 'var(--red)';
+  }
+
   btn.textContent = '📍 חשב מרחק'; btn.disabled = false;
 }
 
@@ -1085,7 +1110,7 @@ function openInCalendar(id) {
     e.notes ? `📝 הערות: ${e.notes}` : '',
   ].filter(Boolean).join('\n');
 
-  const title = encodeURIComponent(`🍕 פיצה זמני — ${e.name}`);
+  const title = encodeURIComponent(`🍕 ${e.name}`);
   const location = encodeURIComponent(e.location || '');
   const detailsEnc = encodeURIComponent(details);
 
